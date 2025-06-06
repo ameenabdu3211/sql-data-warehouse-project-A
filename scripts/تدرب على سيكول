@@ -1,0 +1,1858 @@
+--========================================================
+---Window function training
+--========================================================
+
+
+---Count function practice
+
+
+--==============================================
+---Understanding the behaviour of the customer
+----===============================================
+use salesDB
+
+select 
+         orderid,
+		 orderdate,
+		 CustomerID,
+		 count(orderid) over ()tatalorder, 
+		 count(orderid) over (partition by CustomerID)totalCustomerID
+		 
+from sales.orders
+
+
+--==============================================
+--Handle null by count function
+----===============================================
+
+select 
+      *,
+	 count(*) over ()totarow, 
+	 count(score) over ()totalbyscore	 
+from sales.Customers
+
+
+---==============================================
+--How to check the duplicate
+--===============================================
+
+select *  
+from
+	(select 
+		 ORDERID ,
+		 count(1) over (partition by ORDERID )countrow
+	from sales.ordersArchive )t
+	where  countrow > 1
+
+
+
+	
+
+---sum function practice
+
+--=================================================
+--Compare by sum  function For each product
+----===============================================
+
+select 
+         orderid,
+		 orderdate,
+		 CustomerID,
+		 PRODUCTid,
+		 sum(sales) over ()tatalsales, 
+		  sum(sales) over (partition by  PRODUCTid)tatalsalesbycustomer		 
+from sales.orders
+
+
+--=================================================
+--How to find the percentage
+----===============================================
+
+select 
+         orderid,
+		 orderdate,
+		 CustomerID,
+		 PRODUCTid,
+		 sales,
+	ROUND(	CAST(sales as float)/ sum(sales) over () * 100 ,2) percentage , 
+		 sum(sales) over ()tatalsales, 
+		  sum(sales) over (partition by  PRODUCTid)tatalsalesbycustomer		 
+from sales.orders
+
+
+
+---AVG function practice
+
+
+
+--=================================================
+--How to remove the null
+----===============================================
+
+select                      
+      customerid,
+	  lastname,
+	  score,
+	 coalesce( score , 0),
+      avg(score) over() avgscoer,
+	 avg( coalesce(score , 0) ) over () afterrmovenull
+from sales.Customers
+
+
+
+
+
+---MIN AND MAX function practice
+
+--=================================================
+--Use Min and  Max to find the deviation
+--=================================================
+
+
+
+select 
+         orderid,
+		 orderdate,
+		 CustomerID,
+		 PRODUCTid,
+		 sales,
+	max(sales) over ()maxsales,
+	min(sales) over ()minsales,
+	sales - min(sales) over ()deviationfrommin,
+	max(sales) over () - sales deviationfromax
+
+from sales.orders
+
+
+
+
+
+
+
+
+---==========================================================================
+----Running total and rolling total
+----============================================================================
+
+
+
+select 
+         orderid,
+		 orderdate,
+		 CustomerID,
+		 PRODUCTid,
+		 sales,
+		AVG(sales) over ()AVGsales, 
+	AVG(sales) over (partition by  PRODUCTid)AVGbycustomer,
+	AVG(sales) over (partition by  PRODUCTid order by  orderdate) movingavg,
+	AVG(sales) over (partition by  PRODUCTid order by  orderdate  rows 
+	between current row and 1 following ) rollingavg
+from sales.orders
+
+
+
+
+---==========================================================================
+---- Moving Average (المتوسط المتحرك)
+----============================================================================
+
+  SELECT 
+    orderid,
+    orderdate,
+    sales,
+    AVG(sales) OVER (ORDER BY orderdate ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS moving_avg, -- Moving Average (المتوسط المتحرك)
+    'Moving Average' AS example_type
+FROM sales.orders;
+
+
+
+
+---==========================================================================
+----Running Total (التوتال المتراكم)
+----============================================================================
+
+SELECT 
+    orderid,
+    orderdate,
+    sales,
+    SUM(sales) OVER (ORDER BY orderdate) AS running_total, -- Running Total (التوتال المتراكم)
+    'Running Total' AS example_type
+FROM sales.orders;
+
+
+
+---==========================================================================
+----Rolling Total (التوتال المتدحرج)
+----============================================================================
+
+SELECT 
+    orderid,
+    orderdate,
+    sales,
+    SUM(sales) OVER (ORDER BY orderdate ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING) AS rolling_total, -- Rolling Total (التوتال المتدحرج)
+    'Rolling Total' AS example_type
+FROM sales.orders;
+
+
+
+
+
+
+
+
+---==========================================================================
+----Window rank function
+----=========================================================================
+
+
+
+SELECT 
+    orderid,
+    orderdate,
+    sales,
+	ROW_NUMBER() over(order by sales desc)ROW_NUMBERsales,
+	Rank()   over(order by sales desc)Ranksales,
+	dense_rank() over(order by sales desc)dense_ranksales 
+
+
+FROM sales.orders;
+
+
+
+
+
+---==========================================================================
+----Find the highest sales for the products
+----=========================================================================
+
+
+select * from (
+
+	SELECT 
+	  orderid,
+		orderdate,
+		sales,
+		ROW_NUMBER() over(partition by productid
+		order by sales desc)ROW_NUMBERbyproduct
+
+
+	FROM sales.orders  )t where  ROW_NUMBERbyproduct = 1;
+
+
+----==========================================================================
+----Find the lowest Two customer based on their  total sales
+----=====================================================================
+
+select * from (
+  SELECT 
+   CustomerID,
+   sum(sales)total,
+   ROW_NUMBER() over ( order by sum(sales)) ranksalesbycustomer
+  FROM sales.orders
+  group by  CustomerID)t
+  where ranksalesbycustomer <= 2
+
+
+  ---===============================
+ ----Make a primary key to new table
+ ----===============================
+
+ 
+  SELECT 
+   ROW_NUMBER() over ( partition by orderid order by orderid )nweprimarykey,
+  *
+     FROM sales.orders
+
+	 
+  ---===============================
+ ----How to identify the duplicate
+ ----===============================
+
+ 
+ select * from (
+
+   SELECT 
+   ROW_NUMBER() over ( partition by orderid order by orderdate  )primerkeyhchek,
+  *
+     FROM sales.OrdersArchive  )t 
+	 where primerkeyhchek = 1
+
+--============================================================================
+--NTLLE rank function
+
+select * ,
+case	when buckets = 1 then'high'
+	    when buckets = 2 then'medium'
+		when buckets = 3 then'low'
+		end Segmentation
+from (
+SELECT 
+	  orderid,
+		orderdate,
+		sales,
+		NTILE(3) over(order by sales desc)buckets
+	FROM sales.orders )t
+
+
+
+--
+ ---======================================================================
+ ----How use   CUME_DIST() and   PERCENT_RANK
+ ----====================================================================
+  
+select 
+     product,
+	 price ,
+	 cume_dist () over (order by price) cumerank 
+	FROM sales.Products
+
+	  
+select   
+     product,
+	 price ,
+	 PERCENT_RANK () over (order by price) cumerank 
+	FROM sales.Products
+
+
+
+
+
+
+
+
+
+
+
+----=======================================================================
+ ----How Analysing months over months by lag function 
+ ----====================================================================
+  
+  select *  , 
+         currntmonthsales - previousmonthsales mom_chang,
+round(	cast(	 (currntmonthsales - previousmonthsales)as float)/ 
+		 previousmonthsales * 100 ,2) momprc
+  
+  from (
+
+  select 
+  month( orderdate) monthdate,
+  sum(sales)currntmonthsales, 
+  lag(sum(sales)) over (order by  month( orderdate))previousmonthsales
+from   sales.orders
+group by  month( orderdate)  )t
+
+--=============================================================
+--Ranks customer based on their average days between their orders
+---use the lead function 
+----==========================================================
+---الحل الثاني هو الصحيح
+select
+	CustomerID,
+    avg(daysnextday)
+over (partition by CustomerID order by daysnextday )avgnextday
+from ( 
+  select
+    orderid,
+	CustomerID,
+	orderdate as currentorder,
+	lead (orderdate)
+	over (partition by CustomerID order by orderdate ) nextorder, 
+	datediff(day ,orderdate, lead (orderdate) 
+	over (partition by CustomerID order by orderdate ))daysnextday
+from   sales.orders  )t 
+
+
+select 
+	CustomerID,
+avg(daysnextday)as nextdayfroorder, 
+dense_rank() over (order by coalesce( avg(daysnextday),999999999))as rankavg
+from ( 
+  select
+    orderid,
+	CustomerID,
+	orderdate as currentorder,
+	lead (orderdate)
+	over (partition by CustomerID order by orderdate )as nextorder, 
+	datediff(day ,orderdate, lead (orderdate) 
+	over (partition by CustomerID order by orderdate ))as daysnextday
+from   sales.orders  )as t 
+group by CustomerID 
+ 
+ ---=========================================================================
+ ---Find the highest and the lowest for each product first and last functiuon 
+ ----=========================================================================
+
+SELECT 
+	  orderid,
+        productid,
+		sales,
+		first_value(sales) over (partition by productid order by sales)
+		lowestsales,
+		last_value(sales) over (partition by productid order by sales
+		rows between current row and unbounded following )hestsales
+	FROM sales.orders 
+
+-----------------------------------------------------------------------------
+--===========================================================================
+--type of subqury
+--===========================================================================
+
+
+
+
+
+
+-----first type non_correlated subquery 
+
+
+
+--------------------- subqury in from clause-----------------------------------
+
+select * from (
+					select 
+							orderid, 
+							sales ,
+							avg(sales) over () avgsales
+					from   sales.orders)t 
+					where sales > avgsales
+
+
+
+
+ 
+select *,
+       row_number() over ( order by smusales desc )ranksmusales 
+	   from (
+					select 
+      						sum(sales) smusales,
+							customerid
+							from   sales.orders
+					group by customerid)t 
+
+------------------- subqury in select clause-----------------------
+use SalesDB
+select 
+      productid, 
+	  product, 
+	  price ,
+	  (select count(orderid)as totalorder from  sales.Orders) as totalorders
+from  sales.Products
+
+------------------- subqury in join clause-----------------------
+select
+sa.*,
+cu.totalordres
+from sales.Customers sa
+		   left join (
+		   select 
+				  customerid,
+				   count(*)totalordres
+		   from sales.Orders
+		   group by customerid)cu
+		   on sa.customerid = cu.customerid
+
+    
+------------------- subqury in where comoarsion oprators clause-----------------------
+select 
+      productid, 
+	  product, 
+	  price 
+from  sales.Products
+where   price >   (select avg(price )from  sales. products)
+
+
+    
+----------------- subqury in where logical (in) oprators clause--------------
+
+select *
+from sales.orders 
+where Customerid in (
+                        select Customerid
+						from  sales.Customers
+						where country = 'germany')
+
+
+----------------- subqury in where logical (any , all) oprators clause--------------
+
+select 
+      employeeid,
+	  firstname,
+	  gender,
+	  salary
+from   sales.Employees
+where   gender = 'f' and salary > any 
+                                    ( select 
+										  salary
+									from   sales.Employees
+									where   gender = 'm')
+
+									
+
+
+select 
+      employeeid,
+	  firstname,
+	  gender,
+	  salary
+from   sales.Employees
+where   gender = 'm' and salary > all 
+                                    ( select 
+										  salary
+									from   sales.Employees
+									where   gender = 'f')
+
+
+
+
+----the second type correlated subquery 
+
+
+select *,
+   (select count(*) from sales.Orders o 
+   where o.customerid = c.customerid)countcustomerid
+from sales.customers c
+
+
+
+------------------------------------------------------------
+select *
+from sales.orders o
+where exists (
+                        select 1
+						from  sales.Customers c 
+						where country = 'germany'
+						and  o.customerid = c.customerid)
+--======================================================================
+---Common Table Expressions (CTE) 
+--=======================================================================
+-----------------non-recursive cte-----------------------------------
+
+----------------the sample form of standalon  (CTE)--------------------
+
+with ctesumsales as (
+--الستي الاوله	
+	select
+			  customerid,
+			  sum(sales)as sumsales
+		from  sales.orders
+			  group by   customerid )
+			 	
+ --الستي التانيه
+			  ,ctemaxorderdate as(
+				select
+			  customerid,
+			  max(orderdate)as maxorderdate
+		from  sales.orders 
+			  group by   customerid)
+--الاستعلام الرئسي 		
+		select s.*,
+		c.sumsales,
+		m.maxorderdate
+		from sales.Customers s
+	left join ctesumsales c on s.customerid = c.customerid
+	left join ctemaxorderdate m on  s.customerid = m.customerid
+	select *
+		from sales.Customers
+
+
+		
+----------------the  Nested query (CTE)--------------------
+
+with ctesumsales as (
+--الستي الاوله	
+	select
+			  customerid,
+			  sum(sales)as sumsales
+		from  sales.orders
+			  group by   customerid )
+			 	
+ --الستي التانيه
+			  ,ctemaxorderdate as(
+				select
+			  customerid,
+			  max(orderdate)as maxorderdate
+		from  sales.orders 
+			  group by   customerid)
+--------------السيتي الثالثه وهنا يوجد الاستعلام المتداخل ---------------
+			  ,cteranksumsales as ( 
+			  select 
+		        customerid,
+		      sumsales, 
+			 rank () over (order by sumsales desc) as ranksumsales
+        from   ctesumsales)
+-------------السيتي الرابعه نريد -------------------------===
+             ,ctecustomersegments as ( 
+			 select 
+			   customerid,
+		      sumsales, 
+			  case when sumsales > 100 then 'high'
+			  when sumsales > 80  then 'medium'
+			  else 'low'
+			  end customersegments
+			  from ctesumsales )
+			  
+
+--الاستعلام الرئسي 		
+		select s.*,
+		c.sumsales,
+		m.maxorderdate,
+		ranksumsales,
+		customersegments
+		from sales.Customers s
+	left join ctesumsales c         on s.customerid   = c.customerid
+	left join ctemaxorderdate m     on  s.customerid  = m.customerid
+	left join cteranksumsales k     on  s.customerid  = k.customerid
+    left join ctecustomersegments r on  s.customerid  = r.customerid
+
+
+--------------------------recrsive cte ------------------------------------
+with series as (
+   ---anchor query 
+   select 
+   1 as mynumber
+   union all
+   ---recusive query
+   select
+    mynumber + 1
+   from series
+   where mynumber < 645 )
+   ----main query
+   select * from series
+   option (maxrecursion 1000)
+
+----show the employee hierarchy by diplay each employee's level
+----within the organization 
+
+with cteemphierarchy as (
+---anchor query
+ select 
+   employeeid,
+   firstname,
+   managerid,
+   1 as level
+ from sales.employees
+ where  managerid is null
+ union all
+ ---recusive query
+  select 
+   e.employeeid,
+   e.firstname,
+  e.managerid,
+    level + 1
+ from sales.employees as e
+ inner join cteemphierarchy as c
+ on  c.managerid = e.employeeid   )
+ -- main query
+ select * from cteemphierarchy
+
+
+ WITH cteemphierarchy AS (
+    -- Anchor query: نبدأ بالمدير الأعلى
+    SELECT 
+        employeeid,
+        firstname,
+        managerid,
+        1 AS level
+    FROM sales.employees
+    WHERE managerid IS NULL
+
+    UNION ALL
+
+    -- Recursive query: نربط الموظف بمديره الموجود في النتائج السابقة
+    SELECT 
+        e.employeeid,
+        e.firstname,
+        e.managerid,
+        c.level + 1
+    FROM sales.employees AS e
+    INNER JOIN cteemphierarchy AS c
+        ON e.managerid = c.employeeid
+)
+
+-- الاستعلام النهائي
+SELECT * FROM cteemphierarchy;
+
+--===================================================================
+-------------------Views------------------------------------
+--========================================================
+
+drop view sales.vmonthly
+create view sales.vmonthly as 
+( 
+ 	select
+			
+			  datetrunc (month , orderdate)ordermonth,
+              sum(sales)as sumsales,
+			  count(orderid)countorderid
+    from      sales.orders
+			  group by  
+			  datetrunc (month , orderdate))
+
+			  select * from sales.vmonthly
+---------------CATS TABLE ---------------
+
+
+	if object_id('SALES.sumsales','u') is not null
+	  drop table SALES.sumsales;
+	go		
+	  select 
+			  datename (month , orderdate)ordermonth,
+              sum(sales)as sumsales,
+			  count(orderid)countorderid
+    INTO SALES.sumsales
+    from      sales.orders
+			  group by  
+			  datename (month , orderdate)
+			 select * FROM SALES.sumsales  
+------------------temporary tables ---------------------------
+   
+   select * 
+   into #ameen 
+from sales.employees
+   
+    
+   select * 
+   from #ameen 
+
+
+
+-------------------Stored Procedures -----------------------------------
+
+alter Procedure getCustomerSimmary @country nvarchar(50) = 'usa' 
+as 
+	begin 
+	   begin try
+   
+		  declare @totalcustomer int,  @avgscore float ;
+
+--preper & cleanup data
+ 
+	 if exists ( select 1 from sales.Customers where score
+				  is null and country = @country) 
+	 begin 
+		   print ('updating null score to 0');
+		   update sales.Customers
+		   set score = 0 
+		   where score is null and country = @country 
+	 end 
+
+	 else 
+	 begin
+       print ('no null score found')
+     end 
+
+--generating reports
+	select 
+        	@totalcustomer = count(*),
+		    @avgscore = avg(score)
+    from sales.customers
+	where country = @country ;
+
+		print 'total customers from ' + @country + ':' +
+		cast(@totalcustomer as nvarchar);
+		print 'avgrage score from' + @country + ':' +
+		cast(@avgscore as nvarchar);
+
+	select 
+	     count(orderid)totalorders,
+		 sum(sales)totalsales
+    from  sales.orders o
+	join  sales.customers c 
+	on    c.Customerid = o.Customerid 
+    WHERE c.country = @country
+	end try 
+	begin catch
+--error handling 	
+	print(' an error occured.');
+	print('error messgage: ' + error_message());  
+	print('error number: '+ cast(error_number() as nvarchar));
+	print('error line: '+ cast(error_line() as nvarchar));  
+ 	print('error Procedures: '+ error_Procedure());
+	
+
+end catch
+end 
+go 
+exec getCustomerSimmary  
+exec getCustomerSimmary  @country = 'gemany'
+
+-------------------Triggers-----------------------------------
+
+
+CREATE TABLE Sales. EmployeeLogs (
+
+LogID INT IDENTITY(1,1) PRIMARY KEY,
+
+EmployeeID INT,
+
+LogMessage VARCHAR(255),
+
+LogDate DATE
+
+)
+
+
+CREATE TRIGGER trg_afterinsertemployee
+on Sales. Employees
+after insert 
+as 
+begin
+     insert Sales. EmployeeLogs
+	 (EmployeeID, LogMessage,LogDate)
+      select 
+	      EmployeeID,
+		  'new employee added =' + cast(EmployeeID as varchar),
+		  getdate() 
+      from inserted
+end
+
+
+SELECT * FROM Sales. EmployeeLogs
+
+INSERT INTO Sales. Employees
+
+VALUES
+
+(6, 'Maria', 'Doe', 'HR', '1988-01-12', 'F', 80000, 3)
+
+
+-------------------------Indexes---------------------------
+ select * 
+ from sales.DBCustomers
+   from sales.Customers
+
+	create clustered index idx_DBCustomers_CustomerID
+	on sales.DBCustomers (CustomerID) 
+
+	create nonclustered index idx_DBCustomers_lastname
+	on sales.DBCustomers (lastname) 
+
+	create  index idx_DBCustomers_firstname
+	on sales.DBCustomers (firstname) 
+
+	create nonclustered index idx_DBCustomers_lastname_firstname
+	on sales.DBCustomers (lastname ,firstname) 
+
+	drop index [idx_DBCustomers_CustomerID] 
+	on sales.DBCustomers
+
+	create clustered columnstore index idx_DBCustomers_CS
+	ON sales.DBCustomers
+
+--use AdventureWorksDW2022
+use adventureworksDW2022
+  --HWAP
+select * 
+into FactInternetSales_HP
+from FactInternetSales
+
+--rowstoer
+select * 
+into FactInternetSales_RS
+from FactInternetSales
+
+
+  create clustered  index idx_FactInternetSales_RS
+	ON FactInternetSales_RS(SalesOrderNumber, SalesOrderLineNumber)
+
+
+--columnstore
+select * 
+into FactInternetSales_CS
+from FactInternetSales
+
+create clustered columnstore  index 
+idx_FactInternetSales_CS
+ ON FactInternetSales_CS
+ 
+
+ -- UNIQUE index 
+  
+  select * from sales.Products
+  
+  create UNIQUE nonclustered  index 
+idx_Products_Product
+ ON sales.Products (Product)  
+ 
+--Filtered index
+ select * from sales.Customers
+ where Country = 'usa'
+
+   create  nonclustered  index 
+idx_Customers_Country
+ ON sales.Customers (Country) 
+  where Country = 'usa'
+
+  
+  --Indexed management 
+
+  -------------1Monitor index usege-----------------------
+  sp_helpindex 'sales.DBCCustomers'
+
+  SELECT
+      tbl.name as tablename ,
+	   idx.name as indexname ,
+	   idx.type_desc as indextype ,
+       idx.is_primary_key as isprimarykey ,
+       idx. is_disabled as is_disabled ,
+	   idx. is_unique as isunique  ,
+	   s.user_seeks AS UserSeeks,
+      s.user_scans AS UserScans,
+     s.user_lookups AS UserLookups,
+     s.user_updates AS UserUpdates,
+     COALESCE(s.last_user_seek, s.last_user_scan) LastUpdate
+   from 
+       sys.indexes as idx
+	join sys.tables AS tbl 
+	on idx.object_id  = tbl.object_id  
+	left join sys.dm_db_index_usage_stats as s
+	on idx.object_id  = s.object_id  
+	and s.index_id = idx.index_id
+  order by  tbl.name ,  idx.name
+
+  | العمود         | المعنى                                                                                                                                         |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user_seeks`   | عدد المرات التي تم فيها **البحث باستخدام فهرس موجه (Seek)**، وهو أسرع نوع من أنواع الوصول للبيانات. يعبر عن استخدام جيد للفهرس.                |
+| `user_scans`   | عدد المرات التي تم فيها **فحص كامل للفهرس أو الجدول (Scan)**، مما يعني أن SQL Server لم يستطع استخدام الفهرس بشكل فعال، أو لا يوجد فهرس مناسب. |
+| `user_lookups` | عدد المرات التي اضطر فيها SQL Server إلى **الوصول إلى الجدول الأساسي لاستكمال بيانات** لم يجدها في الفهرس (غالبًا في فهارس غير مغطية).         |
+| `user_updates` | عدد المرات التي تم فيها **تعديل أو إدخال أو حذف** صفوف تؤثر على هذا الفهرس. التحديثات تسبب أحيانًا حمل إضافي على الفهارس.                      |
+
+   select *
+ from      sys.tables
+
+   select *
+ from      sys.indexes
+ 
+  	   SELECT *
+   from  sys.dm_db_index_usage_stats
+
+
+	   SELECT *
+   from  sys.indexes 
+	select * 
+   from DBCustomers
+
+
+---------------2mMonitor Missing Indexes----------------
+
+	   SELECT *
+   from  sys.dm_db_missing_index_details 
+
+   
+	SELECT
+	fs. SalesOrderNumber,
+	dp. EnglishProductName,
+	dp.Color
+	FROM
+	FactInternetSales fs
+	INNER JOIN DimProduct dp
+	ON fs.ProductKey = dp.ProductKey
+	WHERE dp.Color = 'Black'
+	AND fs.OrderDateKey BETWEEN 20101229 AND 20101231
+
+
+---------------Monitor duplicate index------------------
+	
+		SELECT
+	tbl.name AS TableName,
+	col.name AS IndexColumn,
+	idx.name AS IndexName,
+	idx.type_desc AS IndexType,
+	COUNT(*) OVER (PARTITION BY tbl.name, col.name) ColumnCount
+	FROM sys.indexes idx
+	JOIN sys.tables tbl ON idx.object_id = tbl.object_id
+	JOIN sys.index_columns ic ON idx.object_id = ic.object_id AND idx.index_id = ic.index_id
+	JOIN sys.columns col ON ic.object_id = col.object_id AND ic.column_id = col.column_id
+	ORDER BY ColumnCount DESC  
+
+  
+  ---------------Update statistic---------------------
+
+
+	SELECT
+	SCHEMA_NAME(t.schema_id) AS SchemaName,
+	t.name AS TableName,
+	s.name AS StatisticName,
+	sp.last_updated As LastUpdate,
+	DATEDIFF(day, sp.last_updated, GETDATE()) As LastUpdateDay,
+	sp.rows AS 'Rows',
+	sp.modification_counter AS ModificationsSinceLastUpdate
+	FROM sys.stats AS s
+	JOIN sys.tables t
+	ON s.object_id = t.object_id
+	CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) AS sp
+	ORDER BY
+	sp.modification_counter DESC
+	
+
+UPDATE STATISTICS dbo.DatabaseLog PK_DatabaseLog_DatabaseLogID
+UPDATE STATISTICS Sales. DBCustomers
+EXEC sp_updatestats
+
+
+------------------ Monitor Fragmentations------------------------
+
+
+When to Defragment?
+<10% No Action needed
+10-30% Reorganize
+> 30% Rebuild
+
+
+	SELECT
+	tbl.name AS TableName,
+	idx.name AS IndexName,
+	s.avg_fragmentation_in_percent,
+	s.page_count
+	FROM sys.dm_db_index_physical_stats (DB_ID(), NULL, NULL, NULL, 'LIMITED') AS s
+	INNER JOIN sys.tables tbl
+	ON s.object_id = tbl.object_id
+	INNER JOIN sys.indexes AS idx
+	ON idx.object_id = s.object_id
+	AND idx.index_id = s.index_id
+	ORDER BY s.avg_fragmentation_in_percent DESC  
+
+	alter index PK_DimAccount on DimAccount reorganize
+
+	alter index PK_DimAccount on DimAccount rebuild
+	
+
+--------------------Execution plan--------------
+
+    Estimated vs Actual Plans
+
+	If the predictions dont match the Actual Execution Plan,
+	this indicate issues like inaccurate statistics or outdated indexes,
+	leading to poor performance.
+
+	Table Scan: Reads every row in a table.
+    Index Scan: Reads all entries in an index to find results.
+    Index Seek: Quickly locates specific rows in an index.
+
+	--Compare Hawp tible with  clustered indexed
+	SELECT  * 
+    FROM FactResellerSales_HP
+
+    SELECT  * 
+    FROM FactResellerSales    
+
+	SELECT  * 
+    FROM FactResellerSales_HP
+	order by salesordernumber
+
+    SELECT  * 
+    FROM FactResellerSales
+	order by salesordernumber
+
+--If you make noncluster index in FactResellerSales
+--You will see the different in exclusion plan
+	SELECT *
+	FROM FactResellerSales
+	WHERE CarrierTrackingNumber = '4911-403C-98'
+
+	SELECT *
+	FROM FactResellerSales_HP
+	WHERE CarrierTrackingNumber = '4911-403C-98'
+
+--Compare Columstore V.S ROWstore
+
+
+--If you make column Store index In this query 
+--you will see the different Performance
+
+     SELECT
+          p. EnglishProductName AS ProductName,
+          SUM(s.SalesAmount) AS TotalSales
+        FROM FactResellerSales s
+        JOIN DimProduct p
+        ON P.ProductKey = s. ProductKey
+        GROUP BY p. EnglishProductName
+
+
+---------------SQL HINTS------------
+/*Commands you add to a query to force
+the database to run it in a specific
+way for better performance*/
+--ويكن ايضا وضع الاندكس الذي تريد
+
+SELECT
+	o.Sales,
+	c.Country
+	FROM Sales. Orders o
+	LEFT JOIN Sales. Customers c with (forceseek)
+	ON o.CustomerID = c.CustomerID
+-- option (hash join)
+
+--------------Index strategy-------------------
+
+---1--Define your project OLAP or OLRP
+
+---2-------
+	/*You can use this prompt لحساب عددالجداول الاكثر استخدام 
+	Analyze the following SQL queries and generate a report on table and column usage statistics. For each table, provide:
+	The total number of times the table is used across all queries.
+	A breakdown of each column in the table, showing:
+	The number of times each column appears.
+	The primary purpose of the columns usage (e.g., filtering, joining, grouping, aggregating).
+	Sort the tables in descending order based on their total usage.*/
+
+
+
+	/*استخدام الاندكس المناسب
+	When To Use 
+	HEAP Fast Inserts (For Staging Tables)
+	Clustered index For Primary keys If not, then for date columns
+	OLTP Columnstore Index
+	OLAF For Analytical Queries Reduce Size of Large Table
+	Non-Clustered index For non-PK columns
+	(Foreign keys, Joins, and Filters)
+	Filetered index Target Subset of Data Reduce Size of Index
+	Unique Index Enforce Uniqueness Improve Query Speed*/
+
+  
+	----3--- test yuor index 
+
+
+	-------4------------
+	/*Scenario-Based Indexing
+1Identify Slow Queries
+2Check Execution Plan
+3Choose Right Index
+4(Test) Compare Execution Plans*/
+
+
+------5---------
+/*Monitoring & Maintenance
+1Monitor Index Usage
+2Monitor Missing Indexes
+3Monitor Duplicate Indexes
+4Update Statistics
+5Monitor Fragmentations*/
+
+
+
+
+-----Query lists all existing Partition Function
+
+use salesDB
+use adventureworksDW2022
+
+--step 1 CREATE PARTITION
+CREATE PARTITION FUNCTION PartitionByYear (DATE)
+AS RANGE LEFT FOR VALUES ('2023-12-31', '2024-12-31', '2025-12-31')
+
+create partition function PartitionByYear (date)
+as range left  for values  ('2023-12-31', '2024-12-31', '2025-12-31')
+
+
+-- Query lists all existing Partition Function
+
+SELECT
+name,
+function_id,
+type,
+type_desc,
+boundary_value_on_right
+FROM sys.partition_functions
+select * 
+FROM sys.partition_functions
+
+--Step 2: Create Filegroups
+ALTER DATABASE SalesDB ADD FILEGROUP FG_2023;
+ALTER DATABASE SalesDB ADD FILEGROUP   FG_2024;
+ALTER DATABASE SalesDB ADD FILEGROUP   FG_2025;
+ALTER DATABASE SalesDB ADD FILEGROUP   FG_2026;
+
+ALTER DATABASE SalesDB REMOVE FILEGROUP FG_2023;
+
+--chak
+select* from sys.FILEGROUPs
+
+
+
+--step 3:  add.ndf files to each filegroup 
+alter database salesDB ADD  file 
+(name = P_2023, --logical name 
+ filename = 'C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\DATA\P_2023.naf')
+ to filegroup FG_2023 
+
+ alter database salesDB ADD  file 
+(name = P_2026, --logical name 
+ filename = 'C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\DATA\P_2026.naf')
+ to filegroup FG_2026 
+
+ alter database salesDB ADD  file 
+(name = P_2024, --logical name 
+ filename = 'C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\DATA\P_2024.naf')
+ to filegroup FG_2024 
+
+ alter database salesDB ADD  file 
+(name = P_2025, --logical name 
+ filename = 'C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\DATA\P_2025.naf')
+ to filegroup FG_2025 
+
+--chak
+	 SELECT
+    fg.name AS FilegroupName,
+    mf.name AS LogicalFileName,
+    mf.physical_name AS PhysicalFilePath,
+    mf.size / 128 AS SizeInMB
+	FROM
+	sys.filegroups fg
+	JOIN
+	sys.master_files mf 
+	ON fg.data_space_id = mf.data_space_id
+	WHERE
+	mf.database_id = DB_ID('SalesDB');
+
+
+
+	--	Step 4: Create Partition Scheme
+	CREATE PARTITION SCHEME SchemePartitionByYear
+	AS PARTITION PartitionByYear
+	TO (FG_2023, FG_2024, FG_2025, FG_2026)
+
+
+	-- Query lists all Partition Scheme
+
+SELECT
+ps.name AS PartitionSchemeName,
+pf.name AS PartitionFunctionName,
+ds.destination_id AS PartitionNumber,
+fg.name AS FilegroupName
+FROM sys.partition_schemes ps
+JOIN sys.partition_functions pf ON ps.function_id = pf.function_id
+JOIN sys.destination_data_spaces ds ON ps.data_space_id = ds.partition_scheme_id
+JOIN sys.filegroups fg ON ds.data_space_id = fg.data_space_id
+
+--Step 5: Create the Partitioned Table
+
+CREATE TABLE Sales.Orders_Partitioned
+(OrderID INT,
+OrderDate DATE,
+Sales INT)
+ON SchemePartitionByYear (OrderDate)
+
+
+
+--Step 6: Insert Data Into the Partitioned Table
+
+INSERT INTO Sales.Orders_Partitioned 
+VALUES (1, '2023-05-15', 100);
+
+SELECT * FROM Sales.Orders_Partitioned
+--chak
+SELECT
+p.partition_number AS PartitionNumber,
+f.name AS PartitionFilegroup,
+p.rows AS NumberOfRows
+FROM sys.partitions p
+JOIN sys.destination_data_spaces dds 
+ON p.partition_number = dds.destination_id
+JOIN sys.filegroups f 
+ON dds.data_space_id = f.data_space_id
+WHERE OBJECT_NAME(p.object_id) 
+= 'Orders_Partitioned';
+
+
+--------------30x Performance Tips------------------
+
+----------------DML-----------------------------------
+--Tip 1: Select Only What You Need
+
+--Bad Practice
+
+SELECT * FROM Sales.Customers
+
+--Good Practice
+SELECT CustomerID, FirstName, LastName
+FROM Sales. Customers
+
+
+
+--Tip 2: Avoid unnecessary DISTINCT & ORDER BY
+
+SELECT DISTINCT
+FirstName
+FROM Sales. Customers
+ORDER BY FirstName
+
+--Tip 3: For Exploration Purpose, Limit Rows!
+
+--Bad Practice
+SELECT
+  OrderID,
+  Sales
+FROM Sales. Orders
+
+-- Good Practice
+SELECT TOP 10
+OrderID,
+Sales
+FROM Sales. Orders
+
+--Tip 4: Create nonclustered Index on frequently used Columns in WHERE clause
+
+SELECT * FROM Sales. Orders WHERE OrderStatus = 'Delivered'
+CREATE NONCLUSTERED INDEX Idx_Ordess_OrderStatus ON Sales. Orders (OrderStatus)
+
+
+--Tip 5: Avoid applying functions to columns in WHERE clauses
+
+--Bad Practice
+SELECT * FROM Sales. Orders
+WHERE LOWER (OrderStatus) = 'delivered'
+
+--Good Practice
+SELECT * FROM Sales. Orders
+WHERE OrderStatus = 'Delivered'
+
+--Bad Practice
+SELECT *
+FROM Sales.Customers
+WHERE SUBSTRING (FirstName, 1, 1) = 'A'
+
+--Good Practice
+SELECT *
+FROM Sales.Customers
+WHERE FirstName LIKE 'A%'
+
+--Bad Practice
+SELECT *
+FROM Sales. Orders
+WHERE YEAR(OrderDate) = 2025
+
+--Good Practice
+SELECT *
+FROM Sales. Orders
+WHERE OrderDate BETWEEN '2025-01-01' AND '2025-12-31'
+
+
+--Tip 6: Avoid leading wildcards as they prevent index usage
+
+--Bad Practice
+SELECT *
+FROM Sales.Customers
+WHERE LastName LIKE '%Gold%'
+
+--Good Practice
+SELECT *
+FROM Sales.Customers
+WHERE LastName LIKE 'Gold%'
+
+--Tip 7: Use IN instead of Multiple OR
+
+--Bad Practice
+SELECT *
+FROM Sales. Orders
+WHERE CustomerID = 1 OR CustomerID = 2 OR CustomerID = 3
+
+--Good Practice
+SELECT *
+FROM Sales. Orders
+WHERE CustomerID IN (1, 2, 3
+
+--Tip 8: Understand The Speed of Joins & Use INNER JOIN when possible
+
+--Best Performance
+SELECT c.FirstName, o. OrderID FROM Sales. Customers C INNER JOIN Sales. Orders o ON c. CustomerID = 0. CustomerID
+
+--Slightly Slower Performance
+SELECT c.FirstName, o. OrderID FROM Sales. Customers c RIGHT JOIN Sales. Orders o ON c. CustomerID = o. CustomerID
+SELECT c.FirstName, o. OrderID FROM Sales. Customers c LEFT JOIN Sales. Orders o ON c. CustomerID = o. CustomerID
+
+--Worst Performance
+SELECT c.FirstName, o. OrderID FROM Sales. Customers c OUTER JOIN Sales. Orders o ON c. CustomerID = o. CustomerID
+
+
+
+--Tip 9: Use Explicit Join (ANSI Join) Instead of Implicit Join (non-ANSI Join)
+
+--Bad Practice
+SELECT o.OrderID, c.FirstName
+FROM Sales.Customers c, Sales. Orders o
+WHERE c. CustomerID = o. CustomerID
+
+--Good Practice
+SELECT o. OrderID, c.FirstName
+FROM Sales. Customers c
+INNER JOIN Sales. Orders o
+ON c.CustomerID = o. CustomerID
+
+--Tip 10: Make sure to Index the columns used in the ON clause
+SELECT c.FirstName, o. OrderID
+FROM Sales. Orders o
+INNER JOIN Sales. Customers c
+ON c.CustomerID = o. CustomerID
+
+--Tip 12: Filter Before Joining (Big Tables)
+
+--Filter After Join (WHERE)
+SELECT c.FirstName, o. Order ID
+FROM Sales.Customers c
+INNER JOIN Sales. Orders o
+ON c. CustomerID = o. CustomerID
+WHERE o. OrderStatus = 'Delivered'
+
+--Filter During Join (ON)
+SELECT c. FirstName, o. Order ID
+FROM Sales.Customers c
+INNER JOIN Sales. Orders o
+ON c.CustomerID = o. CustomerID
+AND o. OrderStatus = 'Delivered'
+
+--Filter Before Join (SUBQUERY)
+SELECT c. FirstName, o.Order ID
+FROM Sales. Customers c
+INNER JOIN (SELECT OrderID, CustomerID FROM Sales. Orders WHERE OrderStatus = 'Delivered')
+ON c. CustomerID = o. CustomerID
+
+
+
+
+
+--Tip 12: Aggregate Before Joining (Big Tables)
+
+--Best Practices for small Tables
+--Grouping and Joining
+
+SELECT c.CustomerID, c. FirstName, COUNT (o. OrderID) AS Orde
+FROM Sales. Customers c
+INNER JOIN Sales. Orders o
+ON c.CustomerID = o. CustomerID
+GROUP BY c.CustomerID, c. FirstName
+
+--Best Practices for big Tables
+--Pre-aggregated Subquery
+
+SELECT c.CustomerID, c.FirstName, o.OrderCount
+FROM Sales. Customers c
+INNER JOIN ( 
+SELECT CustomerID, COUNT (OrderID) AS OrderCount
+FROM Sales.Orders
+GROUP BY CustomerID)o
+ON c.CustomerID = o.CustomerID
+
+-- Bad Practices
+--Correlated Subquery
+SELECT
+c.CustomerID,
+c.FirstName,
+(SELECT COUNT(o.OrderID)
+FROM Sales. Orders o
+WHERE o. CustomerID = c.CustomerID) AS OrderCount
+FROM Sales. Customers c
+
+
+--Tip 13: Use Union Instead of OR in Joins
+
+--Bad Practice
+SELECT o. OrderID, c. FirstName
+FROM Sales. Customers c
+INNER JOIN Sales. Orders o
+ON c. CustomerID = o. CustomerID
+OR c. CustomerID = o. Sales PersonID
+
+--Best Practice
+SELECT o. OrderID, c.FirstName
+FROM Sales. Customers c
+INNER JOIN Sales.Orders o
+ON c.CustomerID = o.CustomerID
+UNION
+SELECT o.OrderID, c.FirstName
+FROM Sales. Customers c
+INNER JOIN Sales.Orders o
+ON c.CustomerID = o.SalesPersonID
+
+--Tip 14: Check for Nested Loops and Use SQL HINTS
+
+SELECT o. OrderID, c.FirstName
+FROM Sales. Customers c
+INNER JOIN Sales. Orders o
+ON c. CustomerID = o. CustomerID
+
+--Good Practice for Having Big Table & Small Table
+SELECT o. OrderID, c.FirstName
+FROM Sales. Customers c
+INNER JOIN Sales. Orders o
+ON c.CustomerID = o. CustomerID
+OPTION (HASH JOIN)
+
+
+--Tip 15: Use UNION ALL instead of using UNION if duplicates are acceptable
+
+--Bad Practice
+SELECT CustomerID FROM Sales.Orders
+UNION
+SELECT CustomerID FROM Sales. OrdersArchive
+
+--Best Practice
+SELECT CustomerID FROM Sales. Orders
+UNION ALL
+SELECT CustomerID FROM Sales. OrdersArchive
+
+--Tip 16: Use UNION ALL + Distinct instead of using UNION | duplicates are not acceptable
+
+--Bad Practice
+SELECT CustomerID FROM Sales. Orders
+UNION
+SELECT CustomerID FROM Sales .OrdersArchive
+
+--Best Practice
+SELECT DISTINCT CustomerID
+FROM (SELECT CustomerID FROM Sales.Orders
+UNION ALL
+SELECT CustomerID FROM Sales.OrdersArchive) AS CombinedData
+
+--Tip 17: Use Columnstore Index for Aggregations on Large Table
+SELECT CustomerID, COUNT (OrderID) AS OrderCount
+FROM Sales. Orders
+GROUP BY CustomerID
+
+CREATE CLUSTERED COLUMNSTORE INDEX Idx_Orders_Columnstore ON Sales. Orders
+
+--Tip 18: Pre-Aggregate Data and store it in new Table for Reporting
+SELECT MONTH (OrderDate) OrderYear, SUM (Sales) AS TotalSales
+INTO Sales. Sales Summary
+FROM Sales. Orders
+GROUP BY MONTH (OrderDate)
+
+SELECT OrderYear, TotalSales FROM Sales. Sales Summary
+
+
+--Tip 19
+
+--JOIN (medium Practice: or best If the Performance equals to EXISTS)
+SELECT o. OrderID, o. Sales
+FROM Sales. Orders o
+INNER JOIN Sales. Customers c
+ON o. CustomerID c.CustomerID
+WHERE c.Country = 'USA'
+
+--EXISTS (Best Practice: Use it for Large Tables)
+
+SELECT o.Order ID, o. Sales
+FROM Sales. Orders o
+WHERE EXISTS (
+SELECT 1
+FROM Sales. Customers c
+WHERE c.CustomerID o. CustomerID
+AND c.Country = 'USA')
+
+
+
+--IN (Bad Practice)
+
+SELECT o.OrderID, o. Sales
+FROM Sales. Orders o
+WHERE o. CustomerID IN (
+SELECT CustomerID
+FROM Sales.Customers
+WHERE Country = 'USA')
+
+-- Tip 20: Avoid Redundant Logic in Your Query
+
+--Bad Practice
+SELECT EmployeeID, FirstName, 'Above Average' Status
+FROM Sales. Employees
+WHERE Salary > (SELECT AVG(Salary) FROM Sales. Employees)
+UNION ALL
+SELECT EmployeeID, FirstName, 'Below Average' Status
+FROM Sales. Employees
+WHERE Salary (SELECT AVG(Salary) FROM Sales. Employees)
+
+--Good Practice
+SELECT
+EmployeeID,
+FirstName,
+CASE
+WHEN Salary > AVG(Salary) OVER () THEN 'Above Average'
+WHEN Salary AVG(Salary) OVER () THEN 'Below Average'
+ELSE 'Average'
+END AS Status
+FROM Sales. Employees
+
+-------------------DDL---------------------
+--Bad Practice
+
+CREATE TABLE CustomersInfo (
+CustomerID INT,
+FirstName VARCHAR (MAX),
+LastName TEXT,
+Country VARCHAR(255),
+TotalPurchases FLOAT,
+Score VARCHAR(255),
+BirthDate VARCHAR(255),
+EmployeeID INT,
+CONSTRAINT FK_CustomersInfo_EmployeeID FOREIGN KEY (EmployeeID)
+REFERENCES Sales. Employees (EmployeeID))
+
+--avoid useing VARCHAR and  TEXT if not necessary
+--avoid (MAX) and (255) if not necessary
+--use not null CONSTRAINT if it possible
+--use PRIMARY KEY CLUSTERED
+--use nonCLUSTERED on FOREIGN KEY
+
+
+
+--Good Practice
+CREATE TABLE CustomersInfo (
+CustomerID INT PRIMARY KEY CLUSTERED,
+FirstName VARCHAR(50) NOT NULL,
+LastName VARCHAR(50) NOT NULL,
+Country VARCHAR(50) NOT NULL,
+TotalPurchases FLOAT,
+Score INT,
+BirthDate DATE,
+EmployeeID INT,
+CONSTRAINT FK_CustomersInfo_EmployeeID
+FOREIGN KEY (EmployeeID)
+REFERENCES Sales. Employees (EmployeeID))
+
+
+CREATE NONCLUSTERED INDEX IX_CustomersInfo_EmployeeID
+ON CustomersInfo (EmployeeID)
+
+--------------------index--------------------
+--#26TIP
+Avoid Over Indexing
+
+--#27TIP
+Drop unused Indexes
+
+--#28TIP
+Update Statistics (Weekly)
+
+--#29 TIP
+Reorganize & Rebuild Indexes (Weekly)
+
+--#30TIP
+Partition Large Tables (Facts) to improve performance
+Next, apply a Columnstore Index for the best results
+
+
+
+---------------  Using AI in projects ---------------------
+--WITH Chat GPT
+
+Brainstorming & Ideas
+Project Planning
+Learning Knowledge & Research
+Generate Documentations
+Discussing Architecture
+Exploring Best Practices
+Complex Problem Solving
+
+--WITH Copilot
+
+Coding Assistance
+Debugging
+Refactoring
+Inline Comments
+Styling & Formating Code
+
+
+
+
+
+---------اhow to use chat GPT--------------------------------
+--do the fllowing to have good answre
+1[Tasks]
+2[Context]
+3[Specifications]
+4[Role]
+5[Tone]
+
+
+------------best sql prompt--------------------
+
+
+/*#1 Solve an SQL Task
+
+[PROMPT...]
+In my SQL Server database, we have two tables:
+The first table is 'orders' with the following columns: order_id, sales, customer_id, product_id.
+The second table is 'customers' with the following columns: customer_id, first_name, last_name, country.
+Do the following:
+Write a query to rank customers based on their sales.
+The result should include the customer's customer_id, full name, country, total sales, and their rank.
+Include comments but avoid commenting on obvious parts.
+Write three different versions of the query to achieve this task.
+Evaluate and explain which version is best in terms of readability and performance
+
+#2 Improve the Readability
+
+[PROMPT...]
+The following SQL Server query is is long and hard to understand.
+Do the following:
+Improve its readability.
+Remove any redundancy in the query and consolidate it.
+Include comments but avoid commenting on obvious parts.
+Explain each improvement to understand the reasoning behind it.
+[SQL Query COES HERE ]
+
+#3 Optimize the Performance Query
+
+[PROMPT...]
+The following SQL Server query is slow.
+Do the following:
+Propose optimizations to improve its performance.
+Provide the improved SQL query.
+Explain each improvement to understand the reasoning behind it.
+[ SQL Query GOES HERE ]
+
+#4 Optimize Execution Plan
+
+[PROMPT...]
+The image is the execution plan of SQL Server query.
+Do the following:
+Describe the execution plan step by step.
+Identify performance bottlenecks and issues.
+Suggest ways to improve performance and optimize the execution plan.
+[SQL Query GOES HERE]
+
+#5 Debugging
+
+[PROMPT...]
+The following SQL Server Query causing this error: [Error Message GOES HERE]
+Do the following:
+Explain the error massage.
+Find the root cause of the issue.
+Suggest how to fix it.
+[ SQL Query GOES HERE ]
+
+#6 Explain the Result
+
+[PROMPT...]
+I didn't understand the result of the following SQL Server query.
+Do the following:
+Break down how SQL processes the query step by step.
+Explaining each stage and how the result is formed..
+[ SQL Query GOES HERE ]
+
+#7 Styling & Formatting
+
+[PROMPT...]
+The following SQL Server query hard to understand.
+Do the following:
+Restyle the code to make it easier to read.
+Align column aliases.
+Keep it compact - do not introduce unnecessary new lines.
+Ensure the formatting follows best practices.
+[SQL Query COES HERE]
+
+#8 Documentations & Comments
+
+[PROMPT...]
+The following SQL Server query lacks comments and documentation.
+Do the following:
+Insert a leading comment at the start of the query describing its overall purpose..
+Add comments only where clarification is necessary, avoiding obvious statements.
+Create a separate document explaining the business rules implemented by the query.
+Create another separate document describing how the query works..
+[SQL Query COES HERE]
+
+#9 Improve Database DDL
+
+[PROMPT...]
+The following SQL Server DDL Script has to be optimized.
+Do the following:
+Naming: Check the consistency of table/column names, prefixes, standards.
+Data Types: Ensure data types are appropriate and optimized.
+Integrity: Verify the integrity of primary keys and foreign keys.
+Indexes: Check that indexes are sufficient and avoid redundancy.
+Normalization: Ensure proper normalization and avoid redundancy.
+[ SOL DDI GOES HERE ]
+
+#10 Generate Test Dataset
+
+[PROMPT...]
+I need dataset for testing for the following SQL Server DDL
+Do the following:
+Generate test dataset as Insert statements.
+Dataset should be realstic.
+Keep the dataset small.
+Ensure all primary/foreign key relationships are valid (use matching IDs).
+Dont introduce any Null values.
+[SOL DDL GOES HERE ]
+
+
+----TOP 5 learning prompts
+
+#11 Create SQL Course
+
+[PROMPT...]
+Create a comprehensive SQL course with a detailed roadmap and agenda.
+Do the following:
+Start with SQL fundamentals and advance to complex topics.
+Make it beginner-friendly.
+Include topics relevant to data analytics.
+Focus on real-world data analytics use cases and scenarios.
+
+#12 Understand SQL Concept
+
+[PROMPT...]
+I want detailed explanation about SQL Window Functions.
+Do the following:
+Explain what Window Functions are.
+Give an analogy.
+Describe why we need them and when to use them.
+Explain the syntax.
+Provide simple examples.
+
+#13 Comparing SQL Concepts
+
+[PROMPT...]
+I want to understand the differences between SQL Windows and GROUP BY.
+Do the following:
+Explain the key differences between the two concepts.
+Describe when to use each concept, with examples.
+Provide the pros and cons of each concept.
+Summarize the comparison in a clear side-by-side table.
+
+#14 Practice SQL
+
+[PROMPT...]
+Act as an SQL trainer and help me practice SQL Window Functions.
+Do the following:
+Make it interactive Practicing, you provide task and give solution.
+Provide a sample dataset.
+Give SQL tasks that gradually increase in difficulty.
+Act as an SQL Server and show the results of my queries.
+Review my queries, provide feedback, and suggest improvements.
+
+#15 Prepare for a SQL Interview
+
+[PROMPT...]
+Act as Interviewer and prepare me for a SQL interview.
+Do the following:
+Ask common SQL interview questions.
+Make it interactive Practicing, you provide question and give answer.
+Gradually progress to advanced topics.
+Evaluate my answer and give me a feedback. */
+
+
+
+
+
+ select * 
+   from sales.Customers
+
+ select * 
+   from sales.employees
+select *
+ from sales.Orders 
+ select *
+  
+select 
+*
+from INFORMATION_SCHEMA.COLUMNS
+  select 
+*
+from   sales.orders
+
+20; 28 
+use salesDB
+use adventureworksDW2022
+adventureworksbuildversion
+
