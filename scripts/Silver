@@ -1,0 +1,467 @@
+
+IF OBJECT_ID ('silver.crm_cust_info','U') IS NOT NULL 
+	DROP TABLE silver.crm_cust_info;
+GO
+
+CREATE TABLE silver.crm_cust_info (
+	cst_id INT,
+	cst_key NVARCHAR(50),
+	cst_firstname NVARCHAR(50),
+	cst_lastname NVARCHAR(50),
+	cst_material_status NVARCHAR(50),
+	cst_gndr NVARCHAR(50),
+	cst_create_date DATE,
+	dwh_create_date DATETIME2 DEFAULT GETDATE()
+);
+
+IF OBJECT_ID ('silver.crm_prd_info', 'U') IS NOT NULL
+	DROP TABLE silver.crm_prd_info;
+GO
+
+CREATE TABLE silver.crm_prd_info (
+	prd_id INT,
+	cat_id NVARCHAR(50),
+	prd_key NVARCHAR(50),
+	prd_nm NVARCHAR(50),
+	prd_cost FLOAT,
+	prd_line NVARCHAR(50),
+	prd_start_dt DATE,
+	prd_end_dt DATE,
+	dwh_create_date DATETIME2 DEFAULT GETDATE()
+);
+
+IF OBJECT_ID ('silver.crm_sales_details', 'U') IS NOT NULL
+	DROP TABLE silver.crm_sales_details;
+GO
+
+CREATE TABLE silver.crm_sales_details (
+	sls_ord_num NVARCHAR(50),
+	sls_prd_key NVARCHAR(50),
+	sls_cust_id INT,
+	sls_order_dt DATE,
+	sls_ship_dt DATE,
+	sls_due_dt DATE,
+	sls_sales FLOAT,
+	sls_quantity INT,
+	sls_price FLOAT,
+	dwh_create_date DATETIME2 DEFAULT GETDATE()
+);
+
+IF OBJECT_ID ('silver.erm_cust_az12', 'U') IS NOT NULL
+	DROP TABLE silver.erm_cust_az12;
+GO
+
+CREATE TABLE silver.erm_cust_az12 (
+	cid NVARCHAR(50),
+	bdate DATE,
+	gen NVARCHAR(50),
+	dwh_create_date DATETIME2 DEFAULT GETDATE()
+);
+
+IF OBJECT_ID ('silver.erm_loc_a101', 'U') IS NOT NULL
+	DROP TABLE silver.erm_loc_a101;
+GO
+
+CREATE TABLE silver.erm_loc_a101 (
+	cid NVARCHAR(50),
+	cntry NVARCHAR(50),
+	dwh_create_date DATETIME2 DEFAULT GETDATE()
+);
+
+IF OBJECT_ID ('silver.erm_px_cat_g1v2', 'U') IS NOT NULL
+	DROP TABLE silver.erm_px_cat_g1v2;
+GO
+
+CREATE TABLE silver.erm_px_cat_g1v2 (
+	id NVARCHAR(50),
+	cat NVARCHAR(50),
+	subcat NVARCHAR(50),
+	maintenance NVARCHAR(50),
+	dwh_create_date DATETIME2 DEFAULT GETDATE()
+);
+
+exec bronze.loud_bronze
+  exec     Silver.loud_bronze
+use datawarehouse 
+
+ CREATE OR ALTER PROCEDURE Silver.loud_bronze AS
+ BEGIN  
+
+  BEGIN TRY
+     DECLARE @start_time DATETIME , @end_time DATETIME ,@batch_start_time DATETIME, @batch_end_time DATETIME;
+
+	  SET @batch_start_time = GETDATE()
+
+	 PRINT '=================================='
+    PRINT 'louding Silver Layer'
+    PRINT '=================================='
+
+	 -- Load CRM  tables
+    PRINT '----------------------------------'
+    PRINT 'louding CRM Tables'
+    PRINT '----------------------------------'
+
+
+ SET @start_time  = GETDATE () ;
+
+ print '>> : TRUNCATE TABLE : silver.crm_cust_info'
+ TRUNCATE TABLE silver.crm_cust_info
+ print '>> : INSERT INTO : silver.crm_cust_info'
+	INSERT INTO silver.crm_cust_info (
+	cst_id,
+	cst_key,
+	cst_firstname,
+	cst_lastname,
+	cst_material_status,
+	cst_gndr,
+	cst_create_date)
+		SELECT 
+		cst_id,
+		cst_key,
+		TRIM(cst_firstname) AS cst_firstname,
+		TRIM(cst_lastname) AS cst_lastname,
+		CASE 
+			WHEN UPPER(cst_material_status) = 'S' THEN 'Single'
+			WHEN UPPER(cst_material_status) = 'M' THEN 'Married'
+			ELSE 'n/a'
+		END AS cst_material_status,
+		CASE   
+			WHEN UPPER(TRIM(cst_gndr)) = 'M' THEN 'Male'
+			WHEN UPPER(TRIM(cst_gndr)) = 'F' THEN 'Female'
+			ELSE 'n/a'
+		END AS cst_gndr,
+		cst_create_date
+	FROM (
+		SELECT *,
+			   ROW_NUMBER() OVER (PARTITION BY cst_id ORDER BY cst_create_date DESC) AS flag_last
+		FROM bronze.crm_cust_info
+		WHERE cst_id IS NOT NULL
+	) t 
+	WHERE flag_last = 1;
+
+	SET @end_time  = GETDATE () ;
+
+	PRINT CONCAT(' >>> Load Duration :' , CAST(DATEDIFF(MILLISECOND, @start_time,@end_time)AS NVARCHAR) ,' milli second')
+
+
+
+   PRINT '##############################################'	
+
+   SET @start_time = GETDATE();
+ print '>> : TRUNCATE TABLE silver.crm_prd_info '
+ TRUNCATE TABLE silver.crm_prd_info
+ print '>> : INSERT INTO silver.crm_prd_info '
+  INSERT INTO silver.crm_prd_info (
+    prd_id,
+    cat_id,
+    prd_key,
+    prd_nm,
+    prd_cost,
+    prd_line,
+    prd_start_dt,
+    prd_end_dt
+)
+SELECT  
+    prd_id,
+    REPLACE(LEFT(prd_key, 5), '-', '_') AS cat_id,
+    SUBSTRING(prd_key, 7, LEN(prd_key)) AS prd_key,
+    prd_nm,
+    COALESCE(prd_cost, 0) AS prd_cost,
+    CASE UPPER(TRIM(prd_line))
+        WHEN 'M' THEN 'Mountain' 
+        WHEN 'R' THEN 'Road'
+        WHEN 'S' THEN 'Other Sales'
+        WHEN 'T' THEN 'Touring' 
+        ELSE 'n/a'
+    END AS prd_line,
+    TRY_CAST(prd_start_dt AS date) AS prd_start_dt,
+    TRY_CAST(
+        LEAD(prd_start_dt) OVER (PARTITION BY prd_key ORDER BY prd_start_dt)
+        AS date
+    ) AS prd_end_dt
+FROM bronze.crm_prd_info;
+  SET @end_time = GETDATE();
+
+
+   PRINT CONCAT('>>> Load Duration:', CAST(DATEDIFF(MILLISECOND, @start_time,@end_time) AS NVARCHAR), ' milli second')
+ PRINT '##############################################'
+
+ SET @start_time = GETDATE();
+  print '>> : TRUNCATE TABLE silver.crm_sales_details '
+ TRUNCATE TABLE silver.crm_sales_details
+ print '>> : INSERT INTO silver.crm_sales_details '
+  INSERT INTO silver.crm_sales_details (
+sls_ord_num,
+sls_prd_key,
+sls_cust_id,
+sls_order_dt,
+sls_ship_dt,
+sls_due_dt,
+sls_sales,
+sls_quantity,
+sls_price )
+
+
+	 select 
+			 sls_ord_num,
+			 sls_prd_key,
+			 sls_cust_id,
+			 case when  sls_order_dt <= 0 
+			 or len(sls_order_dt) !=  8 
+			 or  sls_order_dt < 19000101 or sls_order_dt >20500101
+			 then null
+			 else cast( cast( sls_order_dt as NVARCHAR)as date) 
+			 end as sls_order_dt,
+			  
+
+			  case when  sls_ship_dt <= 0 
+			 or  len(sls_ship_dt ) !=  8
+			 or  sls_ship_dt < 19000101 or sls_ship_dt >20500101
+			 then null
+			 else cast(cast( sls_ship_dt as NVARCHAR) as date)
+			 end as sls_ship_dt,
+
+			   case when  sls_due_dt <= 0 
+			 or  len(sls_due_dt ) !=  8
+			 or  sls_due_dt < 19000101 or sls_due_dt >20500101
+			 then null
+			 else cast(cast( sls_due_dt as NVARCHAR)as date) 
+			 end as sls_due_dt,
+		
+
+			CASE 
+		WHEN sls_sales IS NULL OR sls_sales <= 0 or sls_sales != sls_quantity * abs(sls_price)
+			THEN sls_quantity * abs(sls_price)
+		ELSE sls_sales
+	END sls_sales,
+		
+	NULLIF(sls_quantity,0) as sls_quantity,
+
+	CASE 
+		WHEN sls_price IS NULL OR sls_price <= 0
+			THEN TRY_CAST(sls_sales AS FLOAT) / NULLIF(TRY_CAST(sls_quantity AS FLOAT), 0)
+		ELSE sls_price
+	END sls_price
+	FROM bronze.crm_sales_details
+	  SET @end_time = GETDATE();
+
+	   PRINT CONCAT('>>> Load Duration:', CAST(DATEDIFF(MILLISECOND, @start_time,@end_time) AS NVARCHAR), ' milli second')
+	PRINT '##############################################'
+
+
+	 -- Load ERM  tables
+    PRINT '----------------------------------'
+    PRINT 'louding ERM Tables'
+    PRINT '----------------------------------'
+
+SET @start_time = GETDATE();
+print '>> : TRUNCATE TABLE silver.erm_cust_az12'
+ TRUNCATE TABLE silver.erm_cust_az12
+ print '>> : INSERT INTO silver.erm_cust_az12'
+    INSERT INTO silver.erm_cust_az12
+    (cid , bdate , gen )
+    SELECT
+	CASE WHEN cid LIKE 'NAS%' THEN SUBSTRING(cid, 4, LEN(cid))
+	ELSE cid
+	END AS cid,
+	case when bdate > GETDATE () then null
+	else bdate 
+	end bdate , 
+	case 
+	     when upper(trim(gen)) IN ( 'MALE' , 'M' ) then 'Male'
+		 when upper(trim(gen)) IN ('F' , 'FEMALE') then 'Female'		
+	  ELSE 'n/a'
+	  END gen
+	from bronze.erm_cust_az12 
+	  SET @end_time = GETDATE();
+	   PRINT CONCAT('>>> Load Duration:', CAST(DATEDIFF(MILLISECOND, @start_time,@end_time) AS NVARCHAR), ' milli second')
+	PRINT '##############################################'
+
+
+	SET @start_time = GETDATE();
+print '>> : TRUNCATE TABLE silver.erm_loc_a101'
+ TRUNCATE TABLE silver.erm_loc_a101
+ print '>> : INSERT INTO silver.erm_loc_a101'
+ INSERT INTO silver.erm_loc_a101
+ (cid , cntry )
+ SELECT 
+    REPLACE(cid, '-', '') AS cid,
+    CASE 
+        WHEN TRIM(cntry) = 'DE' THEN 'Germany'
+        WHEN TRIM(cntry) IN ('US', 'USA') THEN 'United States'
+        WHEN TRIM(cntry) = '' OR cntry IS NULL THEN 'n/a'
+        ELSE TRIM(cntry)
+    END AS cntry
+FROM bronze.erm_loc_a101;
+  SET @end_time = GETDATE();
+   PRINT CONCAT('>>> Load Duration:', CAST(DATEDIFF(MILLISECOND, @start_time,@end_time) AS NVARCHAR), ' milli second')
+PRINT '##############################################'
+
+
+
+SET @start_time = GETDATE();
+print '>> : TRUNCATE TABLE silver.erm_px_cat_g1v2'
+ TRUNCATE TABLE silver.erm_px_cat_g1v2
+ print '>> : INSERT INTO silver.erm_px_cat_g1v2'
+  INSERT INTO silver.erm_px_cat_g1v2
+  ( id, cat, subcat, maintenance)
+  SELECT     
+  id, 
+  cat,
+  subcat,
+  maintenance
+  FROM bronze. erm_px_cat_g1v2
+  SET @end_time = GETDATE();
+  PRINT '##############################################'
+  PRINT CONCAT('>>> Load Duration:', CAST(DATEDIFF(MILLISECOND, @start_time,@end_time) AS NVARCHAR), ' milli second')
+  SET @batch_end_time = GETDATE ()
+  PRINT 'Loading Bronze Layer is completed'
+  PRINT CONCAT('>>> Total Load Duration :', CAST(DATEDIFF(MILLISECOND, @batch_start_time,@batch_end_time) AS NVARCHAR), ' milli second')
+
+  END TRY
+  BEGIN CATCH
+    PRINT '=============================================='
+    PRINT 'ERROR OCCURRED DURING LOADING BRONZE LAYER'
+    PRINT CONCAT('Error Message: ', ERROR_MESSAGE())
+    PRINT CONCAT('Error Number: ', CAST(ERROR_NUMBER() AS NVARCHAR))
+    PRINT CONCAT('Error State: ', CAST(ERROR_STATE() AS NVARCHAR))
+    PRINT '==============================================='
+  END CATCH
+
+ end
+
+ exec silver.loud_bronze
+
+use DataWarehouse
+
+
+
+
+
+
+
+
+ SELECT * 
+  FROM silver.crm_prd_info
+
+
+   SELECT * 
+  FROM bronze.crm_sales_details
+  order by sls_prd_key
+     
+  SELECT * FROM bronze.erm_px_cat_g1v2
+
+   SELECT * 
+   FROM bronze.crm_prd_info
+
+   -- check for nulls or Duplicates in Primary key 
+
+ select 
+ prd_id,
+ count(*)
+ from silver.crm_prd_info
+ group by prd_id
+ having  count(*) > 1 or  prd_id is null
+ 
+
+--check for unwanted spaces 
+select prd_nm 
+from silver.crm_prd_info  
+where prd_nm  != TRIM(prd_nm)
+
+
+
+--data standardization  & consistency
+select distinct  prd_line 
+from silver.crm_prd_info
+
+
+ 
+ --primary key chak
+
+  SELECT prd_id, COUNT(*) AS count_per_id
+FROM bronze.crm_prd_info
+GROUP BY prd_id
+HAVING COUNT(*) > 1;
+
+
+--check for unwanted spaces 
+select prd_nm
+from bronze.crm_prd_info  
+where prd_nm  != TRIM(prd_nm)
+
+
+--chak for NULL or Negative Numbers
+select prd_cost
+FROM silver.crm_prd_info
+where prd_cost < 0 or prd_cost is null
+
+--check for inavlid date ordres 
+select *
+FROM silver.crm_prd_info
+WHERE prd_end_dt < prd_start_dt
+use DataWarehouse
+
+
+
+---chak table number 3 FROM bronze.crm_sales_details
+
+
+---??? ???????? ????? ????? ???
+select * from bronze.crm_sales_details
+where sls_ord_num != trim(sls_ord_num)
+
+-------?فحص امكانيه ربط الجداول
+
+select * from bronze.crm_sales_details
+where sls_prd_key not in (select prd_key from silver.crm_prd_info)
+
+select * from bronze.crm_sales_details
+where sls_cust_id not in ( select cst_id from bronze.crm_cust_info)
+
+--- فحص صحت العمود الذي يحتوي على تاريخ
+select * from bronze.crm_sales_details
+where sls_order_dt <= 0 or len(sls_order_dt) != 8
+or sls_order_dt > 20500101  or sls_order_dt < 19000101
+
+--فحص التواريخ بعد تنظيق
+select * FROM silver.crm_sales_details
+where sls_order_dt > sls_ship_dt or 
+      sls_order_dt > sls_due_dt or
+      sls_ship_dt > sls_due_dt or sls_order_dt is null 
+	  or sls_ship_dt is null or sls_due_dt  is null 
+
+select * from bronze.crm_sales_details
+where sls_ship_dt > sls_due_dt 
+
+--Check Data Consistency: Between Sales, Quantity, and Price
+-->> Sales = Quantity * Price
+-->> Values must not be NULL, zero, or negative.
+
+
+SELECT
+  sls_sales,
+  sls_quantity,
+  sls_price
+FROM bronze.crm_sales_details
+WHERE sls_sales  != sls_quantity * abs(sls_price)
+
+
+use DataWarehouse
+
+
+
+
+SELECT DISTINCT 
+  sls_order_dt,
+  sls_ship_dt,
+  sls_due_dt
+FROM silver.crm_sales_details
+WHERE 
+  sls_order_dt IS NULL 
+  OR sls_ship_dt IS NULL 
+  OR sls_due_dt IS NULL
+ 
+ 
+ 
+ use DataWarehouse
