@@ -1,0 +1,269 @@
+select *from gold.fact_sales1
+select *from gold.dim_customers1
+select *from gold.dim_products1
+use DataWarehouse
+
+--chang over time
+
+SELECT year( order_date) the_year,
+      sum(sales_amount) totat_rvanu,
+	  count(distinct order_number) NR_order
+from  	 gold.fact_sales1 
+group by year( order_date)
+order by the_year
+
+---Cumulative analysis 
+
+select the_year,totat_rvanu, NR_order,
+sum(totat_rvanu) over (order by the_year) runing_total
+from (
+SELECT year( order_date) the_year,
+      sum(sales_amount) totat_rvanu,
+	  count(distinct order_number) NR_order
+from  	 gold.fact_sales1 
+group by year( order_date)
+)t  
+---------
+	select the_year,  month_name, totat_rvanu, NR_order,
+	sum(totat_rvanu) over ( order by the_year) runing_total
+	from (
+	SELECT  datetrunc( year, order_date) the_year,
+		   datetrunc( month, order_date) the_month,
+			format(order_date, 'MMMM') AS month_name,
+		  sum(sales_amount) totat_rvanu,
+		  count(distinct order_number) NR_order
+	from  	 gold.fact_sales1 
+	group by 
+	datetrunc(month, order_date), format(order_date, 'MMMM'), datetrunc( year, order_date) 
+)t 
+--------------
+	select the_year, totat_rvanu, moving_average,
+	sum(totat_rvanu) over ( order by the_year) runing_total
+	from (
+	SELECT  datetrunc( year, order_date) the_year,
+		    sum(sales_amount) totat_rvanu,
+			round(avg(sales_amount),2) moving_average
+	from  	 gold.fact_sales1 
+	group by datetrunc( year, order_date) 
+)t
+
+---Analyzing the products  performance.
+	 
+
+	WITH products_performance AS (
+	SELECT    p.product_name , 
+	          YEAR( s.order_date) order_year ,
+		      sum( s.sales_amount) as current_sales
+
+	from  	      gold.fact_sales1 s
+	left join     gold.dim_products1 p
+	on p.product_key =  s.product_key
+	where s.order_date is not null
+	group by YEAR( s.order_date),p.product_name 
+)
+
+	SELECT order_year,  product_name , current_sales,
+	AVG(current_sales) OVER (PARTITION BY product_name ) AVG_current_sales,
+	current_sales - AVG(current_sales) OVER (PARTITION BY product_name ) as diffrnt,
+	case when 
+	     current_sales - AVG(current_sales) OVER (PARTITION BY product_name ) = 0 then 'egol_avg'
+	when current_sales - AVG(current_sales) OVER (PARTITION BY product_name ) > 0 then 'abve_avg'
+	when current_sales - AVG(current_sales) OVER (PARTITION BY product_name ) < 0 then 'belo_avg'
+	end comber,
+	lag(current_sales) over (PARTITION BY product_name  order by order_year ) prives_year,
+	(current_sales) - lag(current_sales) over (PARTITION BY product_name  order by order_year) diff_sales_prives_year,
+    case  
+	when current_sales - lag(current_sales) over (PARTITION BY product_name  order by order_year) > 0 then 'incrise'
+	when current_sales - lag(current_sales) over (PARTITION BY product_name  order by order_year) < 0 then 'dcrise'
+	else 'no change'
+	end comber_prives_year
+	FROM products_performance 
+	ORDER BY  product_name , order_year 
+	
+	------part_to_whole
+
+	WITH part_to_whole AS (
+
+	SELECT    p.category,
+		      sum( s.sales_amount) as total_sales
+    from  	      gold.fact_sales1 s
+	left join     gold.dim_products1 p
+	on p.product_key =  s.product_key
+	where category is not null
+	group by category )
+
+	SELECT  category, 
+	        total_sales, 
+	        sum(total_sales) over () as overall_sales,
+			(total_sales/sum(total_sales) over ())* 100 as percentage_of_all
+	from  part_to_whole
+
+
+------Data Segmentation
+with Data_Segmentation as (
+select  product_key ,
+		product_name , 
+		cost,  
+		case when  cost < 100 then 'below 100'
+		     when  cost between 100 and 500 then '100-500'
+		     when  cost between 500 and 1000 then '500-1000'
+			 when  cost > 1000 then 'above 1000'
+        end the_rang
+from gold.dim_products1 )
+
+select  the_rang ,
+		count(product_key )as count_product
+from Data_Segmentation 
+group by the_rang
+order by count_product 
+----------
+
+
+    with Data_Segmentation2 as (
+    SELECT        c.customer_key,
+	              SUM (c.customer_key) AS NR_OF_CUSTOMER,
+		          sum( s.sales_amount) AS total_spending, 
+				  MAX( s.order_date)   First_day,
+				  MIN( s.order_date)   Last_day,
+				  datediff( month ,MIN( s.order_date), MAX( s.order_date ))as lifespan
+				
+    from  	      gold.fact_sales1    s
+	left join     gold.dim_customers1 c
+	on c.customer_key = s.customer_key 
+	group by  c.customer_key
+	)
+
+		SELECT
+	customer_segment,
+	COUNT (customer_key) AS total_customers
+	FROM (
+			SELECT
+			customer_key,
+			CASE WHEN lifespan >= 12 AND total_spending > 5000 THEN 'VIP'
+			     WHEN lifespan >= 12 AND total_spending <= 5000 THEN 'Regular'
+			     ELSE 'New'
+			END customer_segment
+			FROM Data_Segmentation2) t
+	GROUP BY customer_segment
+	ORDER BY total_customers
+---------------------------
+WITH Data_Segmentation2 AS (
+    SELECT
+        c.customer_key,
+		SUM(s.sales_amount) AS total_spending,
+        MAX(s.order_date) AS First_day,
+        MIN(s.order_date) AS Last_day,
+        DATEDIFF(MONTH, MIN(s.order_date), MAX(s.order_date)) AS lifespan
+    FROM gold.fact_sales1 s
+    LEFT JOIN gold.dim_customers1 c
+        ON c.customer_key = s.customer_key
+    GROUP BY c.customer_key
+),
+Segmented_Customers AS (
+    SELECT
+        customer_key,
+        CASE 
+            WHEN lifespan >= 12 AND total_spending > 5000 THEN 'VIP'
+            WHEN lifespan >= 12 AND total_spending <= 5000 THEN 'Regular'
+            ELSE 'New'
+        END AS customer_segment
+    FROM Data_Segmentation2
+)
+SELECT
+    customer_segment,
+    COUNT(customer_key) AS total_customers
+FROM Segmented_Customers
+GROUP BY customer_segment
+ORDER BY total_customers;
+
+
+/* Customer Report
+=======================================================================
+Purpose:This report consolidates key customer metrics and behaviors
+Highlights:
+
+1. Gathers essential fields such as names, ages, and transaction details.
+
+2. Segments customers into categories (VIP, Regular, New) and age groups.
+
+3. Aggregates customer-level metrics:
+Total orders
+Total sales
+Total quantity purchased
+Total products
+Lifespan (in months)
+
+4. Calculates valuable KPIs:
+Recency (months since last order)
+Average order value
+Average monthly spend
+========================================================================*/
+
+---1) Base Query: Retrieves core columns from tables
+ CREATE VIEW gold.report_customers AS
+    WITH base_query AS (
+	SELECT
+	f.order_number,
+	f.product_key,
+	f.order_date,
+	f.sales_amount,
+	f.quantity,
+	c.customer_key,
+	c.customer_number,
+	CONCAT(c.first_name, '', c.last_name) AS customer_name,
+	DATEDIFF(year, c.birthdate, GETDATE()) age
+	FROM gold.fact_sales f
+	LEFT JOIN gold.dim_customers c
+	ON c.customer_key = f.customer_key
+	WHERE order_date IS NOT NULL ) 
+
+--2) Customer Aggregations: Summarizes key metrics at the customer level
+    ,Customer_Aggregations AS (
+	select
+	  	customer_key,
+		customer_number,
+		customer_name,
+		age,
+		COUNT (DISTINCT order_number) AS total_orders,
+		SUM (sales_amount) AS total_sales,
+		SUM (quantity) AS total_quantity,
+		COUNT (DISTINCT product_key) AS total_products,
+		MAX (order_date) AS last_order_date,
+		DATEDIFF (month, MIN (order_date), MAX (order_date)) AS lifespan
+	FROM base_query
+	GROUP BY
+		customer_key,
+		customer_number,
+		customer_name,
+		age
+	)
+  SELECT
+	customer_key,
+	customer_number,
+	customer_name,
+	CASE
+		WHEN age < 20 THEN 'Under 20'
+		WHEN age between 20 and 29 THEN '20-29'
+		WHEN age between 30 and 39 THEN '30-39'
+		WHEN age between 40 and 49 THEN '40-49'
+	ELSE '50 and above'
+	END AS age_group,
+	CASE
+		WHEN lifespan >= 12 AND total_sales > 5000 THEN 'VIP'
+		WHEN lifespan >= 12 AND total_sales <= 5000 THEN 'Regular'
+		ELSE 'New'
+	END AS customer_segment,
+	total_orders,
+	total_sales,
+	total_quantity,
+	total_products,
+	last_order_date,
+		--Compuate average order value (AVO)
+	CASE WHEN total_sales = 0 THEN 0
+	     ELSE total_sales / total_orders
+	END AS avg_order_value,
+	--Compuate average monthly spend
+	CASE WHEN lifespan = 0 THEN total_sales
+	   ELSE total_sales / lifespan
+	END AS avg_monthly_spend
+	FROM customer_aggregations
